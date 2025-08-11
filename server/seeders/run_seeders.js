@@ -6,7 +6,7 @@ import { loadUsersToTheBaseData } from "./load_users.js";
     try {
         console.log('🚀 Starting seeders...');
 
-        await loadUsersToTheBaseData()
+        // await loadUsersToTheBaseData()
         await loadBooksToTheBaseData()
         await loadLoansToTheBaseData()
 

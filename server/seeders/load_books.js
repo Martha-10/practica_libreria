@@ -1,85 +1,58 @@
-const API_URL = "http://localhost:3000/loans";
-const tableLoans = document.getElementById("tableLoans");
-const loanForm = document.getElementById("loanForm");
+/*se encarga de cargar los books a la base de datos*/
+import fs from 'fs'; // es la que me permite leer archivos
+import path from 'path'; // esta muestra la ruta actual
+import csv from 'csv-parser';
+import { pool } from "../conection_db.js"
 
-// Cargar lista
-async function loadLoans() {
-    const res = await fetch(API_URL);
-    const data = await res.json();
-
-    tableLoans.innerHTML = "";
-    data.forEach(p => {
-        tableLoans.innerHTML += `
-            <tr>
-                <td>${p.id_loan}</td>
-                <td>${p.user}</td>
-                <td>${p.book}</td>
-                <td>${p.loan_date}</td>
-                <td>${p.return_date}</td>
-                <td>${p.state}</td>
-                <td>
-                    <button class="btn btn-warning btn-sm" onclick="editLoan(${p.id_loan})">Edit</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteLoan(${p.id_loan})">Delete</button>
-                </td>
-            </tr>
-        `;
-    });
+// Función para detectar el separador
+function detectSeparator(filePath) {
+    try {
+        const sample = fs.readFileSync(filePath, 'utf-8').split('\n')[0];
+        return sample.includes(';') ? ';' : ',';
+    } catch (error) {
+        return ',';
+    }
 }
 
-// Guardar / Actualizar
-loanForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
+export async function loadBooksToTheBaseData() {
 
-    const loan = {
-        id_user: document.getElementById("id_user").value,
-        isbn: document.getElementById("isbn").value,
-        loan_date: document.getElementById("loan_date").value,
-        return_date: document.getElementById("return_date").value,
-        state: document.getElementById("state").value
-    };
+    const routerFile = path.resolve('server/data/02_books_coma.csv');
+    const books = [];
 
-    const id_loan = document.getElementById("id_loan").value;
+    return new Promise((resolve, reject) => {
+        const separator = detectSeparator(routerFile);
 
-    if (id_loan) {
-        // UPDATE
-        await fetch(`${API_URL}/${id_loan}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(loan)
-        });
-    } else {
-        // CREATE
-        await fetch(API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(loan)
-        });
-    }
+        fs.createReadStream(routerFile)
+            .pipe(csv({ separator }))
+            .on("data", (row) => {
+                books.push([
+                    row.isbn,
+                    row.title.trim(),
+                    row.year_of_publication,
+                    row.author
+                ]);
+            })
+            .on('end', async () => {
+                try {
+                    if (books.length === 0) {
+                        console.log('❌ No valid books found in CSV');
+                        resolve();
+                        return;
+                    }
 
-    loanForm.reset();
-    loadLoans();
-});
+                    const sql = 'INSERT INTO books (isbn,title,year_of_publication,author) VALUES ?';
+                    const [result] = await pool.query(sql, [books]);
 
-// Edit
-window.editLoan = async (id) => {
-    const res = await fetch(`${API_URL}/${id}`);
-    const p = await res.json();
-
-    document.getElementById("id_loan").value = p.id_loan;
-    document.getElementById("id_user").value = p.id_user;
-    document.getElementById("isbn").value = p.isbn;
-    document.getElementById("loan_date").value = p.loan_date.split("T")[0];
-    document.getElementById("return_date").value = p.return_date.split("T")[0];
-    document.getElementById("state").value = p.state;
-};
-
-// Delete
-window.deleteLoan = async (id) => {
-    if (confirm("¿Are you sure you want to delete this loan?")) {
-        await fetch(`${API_URL}/${id}`, { method: "DELETE" });
-        loadLoans();
-    }
-};
-
-// Inicializar
-loadLoans();
+                    console.log(`✅ It was entered ${result.affectedRows} books.`);
+                    resolve(); // Termina exitosamente
+                } catch (error) {
+                    console.error('❌ Error trying to enter books:', error.message);
+                    reject(error);
+                }
+            })
+            .on('error', (err) => {
+                console.error('❌ Error trying to read the file CSV from books:', err.message);
+                reject(err);
+            });
+    });
+}

@@ -24,3 +24,4 @@ async function tryConnectionWithTheBaseData() {
         console.error('❌ Error trying to connect with the data base:', error.message);
     }
 }
+tryConnectionWithTheBaseData();
